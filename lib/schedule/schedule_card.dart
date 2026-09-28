@@ -19,27 +19,15 @@ class ScheduleCard extends StatelessWidget {
       elevation: 0,
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Colors.indigo.shade50,
-          child: const Icon(
-            Icons.event,
-            color: Colors.indigo,
-          ),
+          backgroundColor: const Color(0xFFEAF6FF),
+          child: const Icon(Icons.event, color: Color(0xFF1FA8FF)),
         ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 5),
-          child: Text(
-            '$time • $location',
-          ),
+          child: Text('$time • $location'),
         ),
-        trailing: const Icon(
-          Icons.chevron_right,
-        ),
+        trailing: const Icon(Icons.chevron_right),
       ),
     );
   }

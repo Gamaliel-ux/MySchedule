@@ -39,8 +39,8 @@ class DatabaseHelper {
     return await openDatabase(
       path,
 
-      // Database sekarang version 2
-      version: 2,
+      // Database version 3
+      version: 3,
 
       onCreate: _createDatabase,
 
@@ -68,8 +68,10 @@ class DatabaseHelper {
         due_date TEXT NOT NULL,
         due_time TEXT NOT NULL,
         priority TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'Kuliah',
         completed INTEGER NOT NULL DEFAULT 0,
-        reminder_minutes INTEGER NOT NULL DEFAULT 10
+        reminder_minutes INTEGER NOT NULL DEFAULT 10,
+        alarm_sound TEXT NOT NULL DEFAULT 'default_alarm'
       )
     ''');
 
@@ -86,7 +88,8 @@ class DatabaseHelper {
         start_time TEXT NOT NULL,
         end_time TEXT NOT NULL,
         location TEXT,
-        reminder_minutes INTEGER NOT NULL DEFAULT 10
+        reminder_minutes INTEGER NOT NULL DEFAULT 60,
+        alarm_sound TEXT NOT NULL DEFAULT 'default_alarm'
       )
     ''');
   }
@@ -100,10 +103,6 @@ class DatabaseHelper {
     int oldVersion,
     int newVersion,
   ) async {
-    // ========================================================
-    // VERSION 1 → VERSION 2
-    // ========================================================
-
     if (oldVersion < 2) {
       await db.execute('''
         ALTER TABLE tasks
@@ -115,6 +114,26 @@ class DatabaseHelper {
         ALTER TABLE schedules
         ADD COLUMN reminder_minutes
         INTEGER NOT NULL DEFAULT 10
+      ''');
+    }
+
+    if (oldVersion < 3) {
+      await db.execute('''
+        ALTER TABLE tasks
+        ADD COLUMN category
+        TEXT NOT NULL DEFAULT 'Kuliah'
+      ''');
+
+      await db.execute('''
+        ALTER TABLE tasks
+        ADD COLUMN alarm_sound
+        TEXT NOT NULL DEFAULT 'default_alarm'
+      ''');
+
+      await db.execute('''
+        ALTER TABLE schedules
+        ADD COLUMN alarm_sound
+        TEXT NOT NULL DEFAULT 'default_alarm'
       ''');
     }
   }
@@ -142,8 +161,7 @@ class DatabaseHelper {
   // GET ALL TASKS
   // ==========================================================
 
-  Future<List<Map<String, dynamic>>>
-      getTasks() async {
+  Future<List<Map<String, dynamic>>> getTasks() async {
     final db = await database;
 
     return await db.query(
@@ -156,14 +174,12 @@ class DatabaseHelper {
   // GET TASK BY ID
   // ==========================================================
 
-  Future<Map<String, dynamic>?>
-      getTaskById(
+  Future<Map<String, dynamic>?> getTaskById(
     int id,
   ) async {
     final db = await database;
 
-    final result =
-        await db.query(
+    final result = await db.query(
       'tasks',
       where: 'id = ?',
       whereArgs: [id],
@@ -190,6 +206,21 @@ class DatabaseHelper {
     return await db.update(
       'tasks',
       task,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ==========================================================
+  // UPDATE TASK COMPLETED STATUS
+  // ==========================================================
+
+  Future<int> updateTaskCompleted(int id, bool completed) async {
+    final db = await database;
+
+    return await db.update(
+      'tasks',
+      {'completed': completed ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
     );

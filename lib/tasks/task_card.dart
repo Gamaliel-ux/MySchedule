@@ -30,13 +30,9 @@ class TaskCard extends StatelessWidget {
 
       child: ListTile(
         leading: Icon(
-          completed
-              ? Icons.check_circle
-              : Icons.radio_button_unchecked,
+          completed ? Icons.check_circle : Icons.radio_button_unchecked,
 
-          color: completed
-              ? Colors.green
-              : Colors.grey,
+          color: completed ? const Color(0xFF1FA8FF) : Colors.grey,
         ),
 
         title: Text(
@@ -54,14 +50,10 @@ class TaskCard extends StatelessWidget {
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 5),
 
-          child: Text(
-            '$formattedTime • $priority Priority',
-          ),
+          child: Text('$formattedTime • $priority Priority'),
         ),
 
-        trailing: const Icon(
-          Icons.chevron_right,
-        ),
+        trailing: const Icon(Icons.chevron_right),
       ),
     );
   }
