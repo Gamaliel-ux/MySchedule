@@ -2,7 +2,7 @@ name: Build iOS App
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
@@ -15,27 +15,40 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: "zulu"
+          java-version: "17"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x'
-          channel: 'stable'
+          flutter-version: "3.x"
+          channel: "stable"
 
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build iOS (Runner)
+      - name: Install CocoaPods
         run: |
           cd ios
           pod install
           cd ..
-          flutter build ios --release --no-codesign
 
-      - name: Upload iOS Artifact
+      - name: Build iOS
+        run: flutter build ios --release --no-codesign
+
+      - name: Create IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -r Runner.ipa Payload
+
+      - name: Verify IPA
+        run: |
+          echo "=== IPA contents ==="
+          unzip -l Runner.ipa | head -40
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: ios-release-app
-          path: build/ios/iphoneos/Runner.app
+          path: Runner.ipa
