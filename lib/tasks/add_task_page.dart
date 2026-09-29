@@ -267,7 +267,7 @@ class _AddTaskPageState extends State<AddTaskPage> {
                   autocorrect: false,
                   enableIMEPersonalizedLearning: false,
                   decoration: const InputDecoration(
-                    hintText: 'Contoh: Belajar Flutter',
+                    hintText: 'Judul task',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.task_alt),
                   ),

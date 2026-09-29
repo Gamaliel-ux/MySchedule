@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform, SocketException;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -45,7 +48,32 @@ class AuthService {
   static const String _loggedInKey = 'schedule_planner_logged_in';
   static const String _currentUserKey = 'schedule_planner_current_user';
   static const String _tokenKey = 'schedule_planner_token';
-  static const String _apiBaseUrl = 'http://10.0.2.2:3000/api';
+  static const String _customApiUrlKey = 'schedule_planner_custom_api_url';
+
+  static String get defaultApiBaseUrl {
+    if (kIsWeb) return 'http://localhost:3000/api';
+    if (Platform.isAndroid) return 'http://10.0.2.2:3000/api';
+    if (Platform.isIOS) return 'http://127.0.0.1:3000/api';
+    return 'http://localhost:3000/api';
+  }
+
+  static Future<String> getApiBaseUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final custom = prefs.getString(_customApiUrlKey);
+    if (custom != null && custom.trim().isNotEmpty) {
+      return custom.trim();
+    }
+    return defaultApiBaseUrl;
+  }
+
+  static Future<void> setCustomApiUrl(String? url) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (url == null || url.trim().isEmpty) {
+      await prefs.remove(_customApiUrlKey);
+    } else {
+      await prefs.setString(_customApiUrlKey, url.trim());
+    }
+  }
 
   static bool isValidEmail(String value) {
     final regex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
@@ -145,40 +173,63 @@ class AuthService {
       );
     }
 
+    final baseUrl = await getApiBaseUrl();
+
     try {
-      final response = await http.post(
-        Uri.parse('$_apiBaseUrl/auth/register'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'name': cleanName,
-          'email': cleanEmail,
-          'password': cleanPassword,
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/register'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'name': cleanName,
+              'email': cleanEmail,
+              'password': cleanPassword,
+            }),
+          )
+          .timeout(const Duration(seconds: 2));
 
       final body = jsonDecode(response.body);
       if (response.statusCode == 201 || response.statusCode == 200) {
         final user = AuthUser(
           id:
-              body['user']['id']?.toString() ??
+              body['user']?['id']?.toString() ??
               DateTime.now().millisecondsSinceEpoch.toString(),
-          name: body['user']['name'] ?? cleanName,
-          email: body['user']['email'] ?? cleanEmail,
+          name: body['user']?['name'] ?? cleanName,
+          email: body['user']?['email'] ?? cleanEmail,
           password: cleanPassword,
           token: body['token']?.toString(),
           username:
-              body['user']['username'] ?? buildUsernameFromName(cleanName),
+              body['user']?['username'] ?? buildUsernameFromName(cleanName),
         );
 
         await _saveCurrentUser(user);
+        final users = await getUsers();
+        if (!users.any((u) => u.email.toLowerCase() == cleanEmail.toLowerCase())) {
+          users.add(user);
+          await _saveUsers(users);
+        }
         return;
       }
 
       throw Exception(body['message'] ?? 'Registrasi gagal');
     } catch (error) {
+      final errorStr = error.toString();
+      final isNetworkError =
+          errorStr.contains('TimeoutException') ||
+          errorStr.contains('SocketException') ||
+          errorStr.contains('ClientException') ||
+          errorStr.contains('Connection refused') ||
+          errorStr.contains('Failed host lookup') ||
+          error is TimeoutException ||
+          error is SocketException;
+
+      if (!isNetworkError) {
+        rethrow;
+      }
+
       final users = await getUsers();
       final exists = users.any(
         (user) => user.email.toLowerCase() == cleanEmail.toLowerCase(),
@@ -206,7 +257,7 @@ class AuthService {
   static Future<bool> login({
     required String email,
     required String password,
-    bool useApi = false,
+    bool useApi = true,
   }) async {
     final cleanEmail = email.trim();
     final cleanPassword = password.trim();
@@ -215,21 +266,31 @@ class AuthService {
       return false;
     }
 
+    // 1. Instant Fast-Path: Check local users database first (0 ms response)
+    final users = await getUsers();
+    for (final user in users) {
+      if (user.email.toLowerCase() == cleanEmail.toLowerCase() &&
+          user.password == cleanPassword) {
+        await _saveCurrentUser(user);
+        if (useApi) {
+          unawaited(
+            loginWithApi(
+              email: cleanEmail,
+              password: cleanPassword,
+            ).catchError((_) => false),
+          );
+        }
+        return true;
+      }
+    }
+
+    // 2. If not found locally, try API authentication with a snappy 2s timeout
     if (useApi) {
       final apiLoggedIn = await loginWithApi(
         email: cleanEmail,
         password: cleanPassword,
       );
       if (apiLoggedIn) {
-        return true;
-      }
-    }
-
-    final users = await getUsers();
-    for (final user in users) {
-      if (user.email.toLowerCase() == cleanEmail.toLowerCase() &&
-          user.password == cleanPassword) {
-        await _saveCurrentUser(user);
         return true;
       }
     }
@@ -241,44 +302,44 @@ class AuthService {
     required String email,
     required String password,
   }) async {
+    final baseUrl = await getApiBaseUrl();
     try {
-      final response = await http.post(
-        Uri.parse('$_apiBaseUrl/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email.trim(), 'password': password}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email.trim(), 'password': password}),
+          )
+          .timeout(const Duration(seconds: 2));
 
       final body = jsonDecode(response.body);
       if (response.statusCode != 200) {
-        throw Exception(body['message'] ?? 'Login gagal');
+        return false;
       }
 
       final user = AuthUser(
         id:
-            body['user']['id']?.toString() ??
+            body['user']?['id']?.toString() ??
             DateTime.now().millisecondsSinceEpoch.toString(),
-        name: body['user']['name'] ?? email.split('@').first,
-        email: body['user']['email'] ?? email.trim(),
+        name: body['user']?['name'] ?? email.split('@').first,
+        email: body['user']?['email'] ?? email.trim(),
         password: password,
         token: body['token']?.toString(),
         username:
-            body['user']['username'] ??
+            body['user']?['username'] ??
             buildUsernameFromName(
-              body['user']['name'] ?? email.split('@').first,
+              body['user']?['name'] ?? email.split('@').first,
             ),
       );
 
       await _saveCurrentUser(user);
+      final users = await getUsers();
+      if (!users.any((u) => u.email.toLowerCase() == email.trim().toLowerCase())) {
+        users.add(user);
+        await _saveUsers(users);
+      }
       return true;
     } catch (_) {
-      final users = await getUsers();
-      for (final user in users) {
-        if (user.email.toLowerCase() == email.toLowerCase() &&
-            user.password == password) {
-          await _saveCurrentUser(user);
-          return true;
-        }
-      }
       return false;
     }
   }

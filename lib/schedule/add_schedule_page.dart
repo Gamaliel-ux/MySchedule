@@ -328,7 +328,7 @@ class _AddSchedulePageState extends State<AddSchedulePage> {
                   enableIMEPersonalizedLearning: false,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
-                    hintText: 'Contoh: Kuliah Flutter',
+                    hintText: 'Judul schedule',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.event),
                   ),
@@ -540,7 +540,7 @@ class _AddSchedulePageState extends State<AddSchedulePage> {
                   autocorrect: false,
                   enableIMEPersonalizedLearning: false,
                   decoration: const InputDecoration(
-                    hintText: 'Contoh: Kampus / Lab',
+                    hintText: 'Lokasi schedule',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.location_on),
                   ),
