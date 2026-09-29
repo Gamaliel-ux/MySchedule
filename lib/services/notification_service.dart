@@ -6,62 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Alarm sound resolver
-// Maps logical alarm sound names to platform-specific resource names.
-//   Android : res/raw/<name>.wav  (referenced WITHOUT extension)
-//   iOS     : ios/Runner/<name>.wav (referenced WITH extension)
-// ─────────────────────────────────────────────────────────────────────────────
-String _androidSoundResource(String soundName) {
-  switch (soundName) {
-    case 'soft_chime':
-      return 'soft_chime';
-    case 'urgent_buzz':
-      return 'urgent_buzz';
-    case 'default_alarm':
-    default:
-      return 'alarm_default';
-  }
-}
-
-String _iosSoundFile(String soundName) {
-  switch (soundName) {
-    case 'soft_chime':
-      return 'soft_chime.wav';
-    case 'urgent_buzz':
-      return 'urgent_buzz.wav';
-    case 'default_alarm':
-    default:
-      return 'alarm_default.wav';
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Alarm channel IDs
-// We use separate channels per sound so Android can cache different audio URIs.
-// ─────────────────────────────────────────────────────────────────────────────
-String _channelId(String soundName) {
-  switch (soundName) {
-    case 'soft_chime':
-      return 'myschedule_alarm_chime';
-    case 'urgent_buzz':
-      return 'myschedule_alarm_buzz';
-    default:
-      return 'myschedule_alarm_default';
-  }
-}
-
-String _channelName(String soundName) {
-  switch (soundName) {
-    case 'soft_chime':
-      return 'MySchedule - Soft Chime';
-    case 'urgent_buzz':
-      return 'MySchedule - Urgent Alarm';
-    default:
-      return 'MySchedule - Alarm';
-  }
-}
-
 class NotificationService {
   NotificationService._();
 
@@ -69,6 +13,9 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin notifications =
       FlutterLocalNotificationsPlugin();
+
+  static const String channelId = 'myschedule_system_alarm_channel_v2';
+  static const String channelName = 'MySchedule - Alarm Reminder';
 
   // ID Namespace Helpers to avoid notification ID collisions
   static int scheduleIdToNotificationId(int dbId) => 100000 + dbId;
@@ -98,14 +45,10 @@ class NotificationService {
     );
 
     await notifications.initialize(settings: settings);
-
-    // Create one alarm channel per sound variant.
-    // IMPORTANT: Once a channel is created with a sound, Android caches it.
-    // Delete the app + reinstall if you change the sound of an existing channel ID.
-    await _createAlarmChannels();
+    await _createAlarmChannel();
   }
 
-  Future<void> _createAlarmChannels() async {
+  Future<void> _createAlarmChannel() async {
     final android = notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
@@ -113,25 +56,19 @@ class NotificationService {
 
     if (android == null) return;
 
-    final sounds = ['default_alarm', 'soft_chime', 'urgent_buzz'];
-
-    for (final sound in sounds) {
-      await android.createNotificationChannel(
-        AndroidNotificationChannel(
-          _channelId(sound),
-          _channelName(sound),
-          description: 'Alarm reminder untuk jadwal dan tugas MySchedule',
-          importance: Importance.max,
-          enableVibration: true,
-          vibrationPattern: Int64List.fromList([0, 300, 200, 300, 200, 300]),
-          playSound: true,
-          audioAttributesUsage: AudioAttributesUsage.alarm,
-          sound: RawResourceAndroidNotificationSound(
-            _androidSoundResource(sound),
-          ),
-        ),
-      );
-    }
+    // Create system alarm channel using device system sound (sound: null)
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        channelId,
+        channelName,
+        description: 'Notifikasi dan alarm pengingat jadwal serta tugas',
+        importance: Importance.max,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([0, 500, 250, 500, 250, 500]),
+        playSound: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
   }
 
   Future<void> _configureTimezone() async {
@@ -203,43 +140,39 @@ class NotificationService {
 
     if (targetDate.isBefore(now)) {
       if (now.difference(targetDate).inMinutes < 60) {
-        // Fire almost immediately so user still gets notified
+        // Fire almost immediately so user still gets notified if recently passed
         targetDate = now.add(const Duration(seconds: 3));
       } else {
-        return; // Too old — skip silently
+        return; // Skip expired notifications
       }
     }
 
     final notificationDate = tz.TZDateTime.from(targetDate, tz.local);
-    final channelId = _channelId(alarmSound);
 
     // ── Android ─────────────────────────────────────────────
+    // sound: null causes Android to play the device system default sound
     final androidDetails = AndroidNotificationDetails(
       channelId,
-      _channelName(alarmSound),
-      channelDescription: 'Alarm reminder untuk jadwal dan tugas MySchedule',
+      channelName,
+      channelDescription: 'Notifikasi dan alarm pengingat jadwal serta tugas',
       importance: Importance.max,
       priority: Priority.max,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound(
-        _androidSoundResource(alarmSound),
-      ),
       enableVibration: true,
-      vibrationPattern: Int64List.fromList([0, 300, 200, 300, 200, 300]),
+      vibrationPattern: Int64List.fromList([0, 500, 250, 500, 250, 500]),
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
       audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'MySchedule Alarm',
-      // Keep the notification visible even on lock screen
       visibility: NotificationVisibility.public,
     );
 
     // ── iOS ─────────────────────────────────────────────────
-    final iosDetails = DarwinNotificationDetails(
+    // sound: null uses iOS system default sound
+    final iosDetails = const DarwinNotificationDetails(
       presentAlert: true,
       presentSound: true,
       presentBadge: true,
-      sound: _iosSoundFile(alarmSound),
       interruptionLevel: InterruptionLevel.timeSensitive,
     );
 
@@ -259,7 +192,7 @@ class NotificationService {
         payload: 'schedule_planner',
       );
     } catch (_) {
-      // Fallback: inexact alarm (Android 12+ without SCHEDULE_EXACT_ALARM)
+      // Fallback: inexact alarm if Android 12+ exact alarm permission is missing
       try {
         await notifications.zonedSchedule(
           id: id,
@@ -288,7 +221,7 @@ class NotificationService {
     await scheduleNotification(
       id: testId,
       title: 'Alarm MySchedule',
-      body: 'Alarm dan notifikasi berfungsi dengan baik!',
+      body: 'Alarm dan notifikasi HP berhasil berbunyi!',
       scheduledDate: testTime,
       alarmSound: sound,
     );

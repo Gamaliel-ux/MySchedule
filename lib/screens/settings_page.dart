@@ -122,78 +122,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.dns_outlined,
-                color: Color(0xFF1FA8FF),
-              ),
-              title: const Text('Server API URL'),
-              subtitle: FutureBuilder<String>(
-                future: AuthService.getApiBaseUrl(),
-                builder: (context, snapshot) {
-                  return Text(
-                    snapshot.data ?? AuthService.defaultApiBaseUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  );
-                },
-              ),
-              trailing: const Icon(Icons.edit_outlined, size: 18),
-              onTap: () async {
-                final currentUrl = await AuthService.getApiBaseUrl();
-                if (!mounted) return;
-                final controller = TextEditingController(text: currentUrl);
 
-                final newUrl = await showDialog<String>(
-                  context: mounted ? context : context,
-                  builder: (dialogContext) => AlertDialog(
-                    title: const Text('Server API URL'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Masukkan URL server backend Anda (contoh: http://192.168.1.10:3000/api untuk HP fisik):',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: controller,
-                          decoration: const InputDecoration(
-                            hintText: 'http://192.168.x.x:3000/api',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          controller.text = AuthService.defaultApiBaseUrl;
-                        },
-                        child: const Text('Reset Default'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext),
-                        child: const Text('Batal'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(dialogContext, controller.text),
-                        child: const Text('Simpan'),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (newUrl != null) {
-                  await AuthService.setCustomApiUrl(newUrl);
-                  if (mounted) setState(() {});
-                }
-              },
-            ),
-          ),
           const SizedBox(height: 12),
           Card(
             child: ListTile(
